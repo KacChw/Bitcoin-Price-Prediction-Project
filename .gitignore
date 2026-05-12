@@ -1,0 +1,5 @@
+venv_btc_predictions/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.env
