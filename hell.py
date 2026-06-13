@@ -55,6 +55,53 @@ plt.tight_layout()
 # plt.show() # Odkomentuj, jeśli chcesz wygenerować wykres ponownie
 
 # ==========================================
+# WIZUALIZACJA SUROWYCH DANYCH (SZACHOWNICA)
+# ==========================================
+# Przygotowanie danych (zaokrąglamy tylko wartości numeryczne)
+df_surowe_tabela = df.copy()
+for col in zmienne_numeryczne.columns:
+    df_surowe_tabela[col] = df_surowe_tabela[col].apply(lambda x: f"{x:.2f}" if x % 1 != 0 else f"{int(x)}")
+
+fig, ax = plt.subplots(figsize=(20, 11))
+ax.axis('off')
+ax.axis('tight')
+
+# Generowanie kolorów dla szachownicy (naprzemienne wiersze biały / blady zielony)
+kolory_wierszy = []
+for i in range(len(df_surowe_tabela)):
+    if i % 2 == 0:
+        kolory_wierszy.append(['#ffffff'] * len(df_surowe_tabela.columns))
+    else:
+        kolory_wierszy.append(['#e8f5e9'] * len(df_surowe_tabela.columns)) # Blada, pastelowa zieleń
+
+# Rysowanie tabeli graficznej
+tabela_graficzna = ax.table(
+    cellText=df_surowe_tabela.values,
+    colLabels=df_surowe_tabela.columns,
+    cellLoc='center',
+    loc='center',
+    cellColours=kolory_wierszy
+)
+
+# Stylizacja nagłówków tabeli (ciemnozielony z białym tekstem)
+for j in range(len(df_surowe_tabela.columns)):
+    komorka_naglowka = tabela_graficzna[0, j]
+    komorka_naglowka.set_facecolor('#2e7d32')
+    komorka_naglowka.get_text().set_color('white')
+    komorka_naglowka.get_text().set_weight('bold')
+    komorka_naglowka.get_text().set_fontsize(10)
+
+# Dopasowanie rozmiarów
+tabela_graficzna.auto_set_font_size(False)
+tabela_graficzna.set_fontsize(9)
+tabela_graficzna.scale(1, 1.6) # Rozciągnięcie komórek w pionie dla oddechu
+
+plt.title('Macierz wejściowa surowych danych diagnostycznych (Państwa UE)', fontsize=15, pad=25, weight='bold', color='#1b5e20')
+plt.tight_layout()
+plt.show()
+
+
+# ==========================================
 # KROK 2: METODA HELLWIGA (SELEKCJA ZMIENNYCH)
 # ==========================================
 
