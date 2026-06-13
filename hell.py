@@ -327,6 +327,120 @@ for idx, row in ranking_copras.iterrows():
     print(f"{idx+1:2d}. {row['Kraj']:12s} | Wynik Q_i: {row['Miernik_COPRAS']:.4f} | Użyteczność: {row['Uzytecznosc_%']:.2f}%")
 print("="*45)
 
+# ====================================================================
+# WIZUALIZACJA: ZBIORCZA TABELA RANKINGÓW (GRADIENT I WĘŻSZE KOLUMNY)
+# ====================================================================
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+# 1. Obliczenia czystych wyników numerycznych (bez wcześniejszego formatowania na string)
+df_h_in = df_scaled[zmienne_ranking]
+wzorzec_h = {col: (df_h_in[col].max() if col in stymulanty else df_h_in[col].min()) for col in zmienne_ranking}
+odleglosci_h = np.sqrt(((df_h_in - pd.Series(wzorzec_h)) ** 2).sum(axis=1))
+miernik_hellwiga = 1 - (odleglosci_h / (odleglosci_h.mean() + 2 * odleglosci_h.std()))
+r_h_tab = pd.DataFrame({'Kraj (Hellwig)': kraje, 'Wynik_H_raw': miernik_hellwiga}).sort_values(by='Wynik_H_raw', ascending=False).reset_index(drop=True)
+r_h_tab['Miejsce'] = r_h_tab.index + 1
+
+df_t_in = zmienne_numeryczne[zmienne_ranking].copy()
+for col in zmienne_ranking: df_t_in[col] = (df_t_in[col] - df_t_in[col].min()) / (df_t_in[col].max() - df_t_in[col].min())
+w_t = pd.Series({col: (1.0 if col in stymulanty else 0.0) for col in zmienne_ranking})
+a_t = pd.Series({col: (0.0 if col in stymulanty else 1.0) for col in zmienne_ranking})
+miernik_topsis = np.sqrt(((df_t_in - a_t) ** 2).sum(axis=1)) / (np.sqrt(((df_t_in - w_t) ** 2).sum(axis=1)) + np.sqrt(((df_t_in - a_t) ** 2).sum(axis=1)))
+r_t_tab = pd.DataFrame({'Kraj (TOPSIS)': kraje, 'Wynik_T_raw': miernik_topsis}).sort_values(by='Wynik_T_raw', ascending=False).reset_index(drop=True)
+r_t_tab['Miejsce'] = r_t_tab.index + 1
+
+df_c_in = zmienne_numeryczne[zmienne_ranking] / zmienne_numeryczne[zmienne_ranking].sum()
+S_plus = df_c_in[stymulanty].sum(axis=1)
+S_minus = df_c_in[destymulanty].sum(axis=1)
+uzytecznosci = ((S_plus + (S_minus.sum() / (S_minus * (1 / S_minus).sum()))) / (S_plus + (S_minus.sum() / (S_minus * (1 / S_minus).sum()))).max()) * 100
+r_c_tab = pd.DataFrame({'Kraj (COPRAS)': kraje, 'Wynik_C_raw': uzytecznosci}).sort_values(by='Wynik_C_raw', ascending=False).reset_index(drop=True)
+r_c_tab['Miejsce'] = r_c_tab.index + 1
+
+# Budowa zunifikowanej tabeli bazowej
+df_plot_ranking = pd.DataFrame({'Miejsce': range(1, 28)})
+df_plot_ranking = df_plot_ranking.merge(r_h_tab[['Miejsce', 'Kraj (Hellwig)', 'Wynik_H_raw']], on='Miejsce')
+df_plot_ranking = df_plot_ranking.merge(r_t_tab[['Miejsce', 'Kraj (TOPSIS)', 'Wynik_T_raw']], on='Miejsce')
+df_plot_ranking = df_plot_ranking.merge(r_c_tab[['Miejsce', 'Kraj (COPRAS)', 'Wynik_C_raw']], on='Miejsce')
+
+# Przygotowanie wspólnego gradientu (Mapa kolorów YlGn - od żółtego do ciemnej zieleni)
+cmap = plt.cm.get_cmap('YlGn')
+
+# Wyznaczamy ekstrema dla każdej metody osobno, aby poprawnie wyskalować odcienie (0 = najjaśniejszy, 1 = najciemniejszy)
+min_h, max_h = df_plot_ranking['Wynik_H_raw'].min(), df_plot_ranking['Wynik_H_raw'].max()
+min_t, max_t = df_plot_ranking['Wynik_T_raw'].min(), df_plot_ranking['Wynik_T_raw'].max()
+min_c, max_c = df_plot_ranking['Wynik_C_raw'].min(), df_plot_ranking['Wynik_C_raw'].max()
+
+cell_colours = []
+cell_text = []
+
+for i in range(len(df_plot_ranking)):
+    row = df_plot_ranking.iloc[i]
+    
+    # Normalizacja wyników do przedziału [0.05, 0.6] -> ucięte od góry, żeby czarny tekst był idealnie czytelny na zielonym tle
+    norm_h = 0.05 + 0.55 * ((row['Wynik_H_raw'] - min_h) / (max_h - min_h))
+    norm_t = 0.05 + 0.55 * ((row['Wynik_T_raw'] - min_t) / (max_t - min_t))
+    norm_c = 0.05 + 0.55 * ((row['Wynik_C_raw'] - min_c) / (max_c - min_c))
+    
+    # Pobranie dokładnie tych samych kodów HEX z jednego gradientu
+    color_h = mcolors.to_hex(cmap(norm_h))
+    color_t = mcolors.to_hex(cmap(norm_t))
+    color_c = mcolors.to_hex(cmap(norm_c))
+    
+    # Tło dla kolumn tekstowych (klasyczna, bardzo delikatna szachownica dla kontrastu)
+    bg_text = '#ffffff' if i % 2 == 0 else '#f9f9f9'
+    
+    # Mapowanie kolorów na kolumny: Miejsce, Kraj(H), Wynik(H), Kraj(T), Wynik(T), Kraj(C), Wynik(C)
+    row_colors = [bg_text, bg_text, color_h, bg_text, color_t, bg_text, color_c]
+    cell_colours.append(row_colors)
+    
+    # Jednoczesne bezpieczne formatowanie tekstu do wyświetlenia
+    row_text = [
+        str(int(row['Miejsce'])),
+        str(row['Kraj (Hellwig)']),
+        f"{row['Wynik_H_raw']:.4f}",
+        str(row['Kraj (TOPSIS)']),
+        f"{row['Wynik_T_raw']:.4f}",
+        str(row['Kraj (COPRAS)']),
+        f"{row['Wynik_C_raw']:.2f}%"
+    ]
+    cell_text.append(row_text)
+
+# Rysowanie tabeli graficznej
+fig, ax = plt.subplots(figsize=(13, 12)) # Zmniejszona szerokość figury z 16 na 13
+ax.axis('off')
+ax.axis('tight')
+
+# SZTYWNE, WĘŻSZE SZEROKOŚCI KOLUMN (Suma = 0.82 szerokości wykresu - idealne proporcje dla oka)
+col_widths = [0.05, 0.17, 0.09, 0.17, 0.09, 0.17, 0.09]
+naglowki = ['Miejsce', 'Kraj (Hellwig)', 'Wynik', 'Kraj (TOPSIS)', 'Wynik', 'Kraj (COPRAS)', 'Użyteczność']
+
+tabela_wynikowa = ax.table(
+    cellText=cell_text,
+    colLabels=naglowki,
+    cellLoc='center',
+    loc='center',
+    cellColours=cell_colours,
+    colWidths=col_widths
+)
+
+# Stylizacja ciemnozielonego nagłówka
+for j in range(len(naglowki)):
+    cell = tabela_wynikowa[0, j]
+    cell.set_facecolor('#2e7d32')
+    cell.get_text().set_color('white')
+    cell.get_text().set_weight('bold')
+    cell.get_text().set_fontsize(11)
+
+tabela_wynikowa.auto_set_font_size(False)
+tabela_wynikowa.set_fontsize(10)
+tabela_wynikowa.scale(1, 1.6) # Rozciągnięcie wierszy w pionie dla eleganckiego "oddechu"
+
+plt.title('Porównanie wyników i stabilności porządkowania liniowego państw UE', fontsize=14, pad=25, weight='bold', color='#1b5e20')
+plt.tight_layout()
+plt.show()
+
 
 # ==========================================
 # KROK 7: ANALIZA SKUPIEŃ (METODA WARDA)
