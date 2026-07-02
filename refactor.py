@@ -71,51 +71,6 @@ plt.ylabel('Kraje UE', fontsize=12)
 plt.tight_layout()
 plt.show()
 
-# ==========================================
-# WIZUALIZACJA SUROWYCH DANYCH (SZACHOWNICA)
-# ==========================================
-# Przygotowanie danych (zaokrąglamy tylko wartości numeryczne)
-df_surowe_tabela = df.copy()
-for col in zmienne_numeryczne.columns:
-    df_surowe_tabela[col] = df_surowe_tabela[col].apply(lambda x: f"{x:.2f}" if x % 1 != 0 else f"{int(x)}")
-
-fig, ax = plt.subplots(figsize=(20, 11))
-ax.axis('off')
-ax.axis('tight')
-
-# Generowanie kolorów dla szachownicy (naprzemienne wiersze biały / blady zielony)
-kolory_wierszy = []
-for i in range(len(df_surowe_tabela)):
-    if i % 2 == 0:
-        kolory_wierszy.append(['#ffffff'] * len(df_surowe_tabela.columns))
-    else:
-        kolory_wierszy.append(['#e8f5e9'] * len(df_surowe_tabela.columns)) # Blada, pastelowa zieleń
-
-# Rysowanie tabeli graficznej
-tabela_graficzna = ax.table(
-    cellText=df_surowe_tabela.values,
-    colLabels=df_surowe_tabela.columns,
-    cellLoc='center',
-    loc='center',
-    cellColours=kolory_wierszy
-)
-
-# Stylizacja nagłówków tabeli (ciemnozielony z białym tekstem)
-for j in range(len(df_surowe_tabela.columns)):
-    komorka_naglowka = tabela_graficzna[0, j]
-    komorka_naglowka.set_facecolor('#2e7d32')
-    komorka_naglowka.get_text().set_color('white')
-    komorka_naglowka.get_text().set_weight('bold')
-    komorka_naglowka.get_text().set_fontsize(10)
-
-# Dopasowanie rozmiarów
-tabela_graficzna.auto_set_font_size(False)
-tabela_graficzna.set_fontsize(9)
-tabela_graficzna.scale(1, 1.6) # Rozciągnięcie komórek w pionie dla oddechu
-
-plt.title('Macierz wejściowa surowych danych diagnostycznych (Państwa UE)', fontsize=15, pad=25, weight='bold', color='#1b5e20')
-plt.tight_layout()
-plt.show()
 
 # ==========================================
 # KROK 2: METODA HELLWIGA (SELEKCJA ZMIENNYCH)
@@ -312,119 +267,6 @@ for idx, row in ranking_copras.iterrows():
 print("="*45)
 
 
-# ====================================================================
-# WIZUALIZACJA: ZBIORCZA TABELA RANKINGÓW (GRADIENT I WĘŻSZE KOLUMNY)
-# ====================================================================
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-
-# 1. Obliczenia czystych wyników numerycznych (bez wcześniejszego formatowania na string)
-df_h_in = df_scaled[zmienne_ranking]
-wzorzec_h = {col: (df_h_in[col].max() if col in stymulanty else df_h_in[col].min()) for col in zmienne_ranking}
-odleglosci_h = np.sqrt(((df_h_in - pd.Series(wzorzec_h)) ** 2).sum(axis=1))
-miernik_hellwiga = 1 - (odleglosci_h / (odleglosci_h.mean() + 2 * odleglosci_h.std()))
-r_h_tab = pd.DataFrame({'Kraj (Hellwig)': kraje, 'Wynik_H_raw': miernik_hellwiga}).sort_values(by='Wynik_H_raw', ascending=False).reset_index(drop=True)
-r_h_tab['Miejsce'] = r_h_tab.index + 1
-
-df_t_in = zmienne_numeryczne[zmienne_ranking].copy()
-for col in zmienne_ranking: df_t_in[col] = (df_t_in[col] - df_t_in[col].min()) / (df_t_in[col].max() - df_t_in[col].min())
-w_t = pd.Series({col: (1.0 if col in stymulanty else 0.0) for col in zmienne_ranking})
-a_t = pd.Series({col: (0.0 if col in stymulanty else 1.0) for col in zmienne_ranking})
-miernik_topsis = np.sqrt(((df_t_in - a_t) ** 2).sum(axis=1)) / (np.sqrt(((df_t_in - w_t) ** 2).sum(axis=1)) + np.sqrt(((df_t_in - a_t) ** 2).sum(axis=1)))
-r_t_tab = pd.DataFrame({'Kraj (TOPSIS)': kraje, 'Wynik_T_raw': miernik_topsis}).sort_values(by='Wynik_T_raw', ascending=False).reset_index(drop=True)
-r_t_tab['Miejsce'] = r_t_tab.index + 1
-
-df_c_in = zmienne_numeryczne[zmienne_ranking] / zmienne_numeryczne[zmienne_ranking].sum()
-S_plus = df_c_in[stymulanty].sum(axis=1)
-S_minus = df_c_in[destymulanty].sum(axis=1)
-uzytecznosci = ((S_plus + (S_minus.sum() / (S_minus * (1 / S_minus).sum()))) / (S_plus + (S_minus.sum() / (S_minus * (1 / S_minus).sum()))).max()) * 100
-r_c_tab = pd.DataFrame({'Kraj (COPRAS)': kraje, 'Wynik_C_raw': uzytecznosci}).sort_values(by='Wynik_C_raw', ascending=False).reset_index(drop=True)
-r_c_tab['Miejsce'] = r_c_tab.index + 1
-
-# Budowa zunifikowanej tabeli bazowej
-df_plot_ranking = pd.DataFrame({'Miejsce': range(1, 28)})
-df_plot_ranking = df_plot_ranking.merge(r_h_tab[['Miejsce', 'Kraj (Hellwig)', 'Wynik_H_raw']], on='Miejsce')
-df_plot_ranking = df_plot_ranking.merge(r_t_tab[['Miejsce', 'Kraj (TOPSIS)', 'Wynik_T_raw']], on='Miejsce')
-df_plot_ranking = df_plot_ranking.merge(r_c_tab[['Miejsce', 'Kraj (COPRAS)', 'Wynik_C_raw']], on='Miejsce')
-
-# Przygotowanie wspólnego gradientu (Mapa kolorów YlGn - od żółtego do ciemnej zieleni)
-cmap = plt.cm.get_cmap('YlGn')
-
-# Wyznaczamy ekstrema dla każdej metody osobno, aby poprawnie wyskalować odcienie (0 = najjaśniejszy, 1 = najciemniejszy)
-min_h, max_h = df_plot_ranking['Wynik_H_raw'].min(), df_plot_ranking['Wynik_H_raw'].max()
-min_t, max_t = df_plot_ranking['Wynik_T_raw'].min(), df_plot_ranking['Wynik_T_raw'].max()
-min_c, max_c = df_plot_ranking['Wynik_C_raw'].min(), df_plot_ranking['Wynik_C_raw'].max()
-
-cell_colours = []
-cell_text = []
-
-for i in range(len(df_plot_ranking)):
-    row = df_plot_ranking.iloc[i]
-    
-    # Normalizacja wyników do przedziału [0.05, 0.6] -> ucięte od góry, żeby czarny tekst był idealnie czytelny na zielonym tle
-    norm_h = 0.05 + 0.55 * ((row['Wynik_H_raw'] - min_h) / (max_h - min_h))
-    norm_t = 0.05 + 0.55 * ((row['Wynik_T_raw'] - min_t) / (max_t - min_t))
-    norm_c = 0.05 + 0.55 * ((row['Wynik_C_raw'] - min_c) / (max_c - min_c))
-    
-    # Pobranie dokładnie tych samych kodów HEX z jednego gradientu
-    color_h = mcolors.to_hex(cmap(norm_h))
-    color_t = mcolors.to_hex(cmap(norm_t))
-    color_c = mcolors.to_hex(cmap(norm_c))
-    
-    # Tło dla kolumn tekstowych (klasyczna, bardzo delikatna szachownica dla kontrastu)
-    bg_text = '#ffffff' if i % 2 == 0 else '#f9f9f9'
-    
-    # Mapowanie kolorów na kolumny: Miejsce, Kraj(H), Wynik(H), Kraj(T), Wynik(T), Kraj(C), Wynik(C)
-    row_colors = [bg_text, bg_text, color_h, bg_text, color_t, bg_text, color_c]
-    cell_colours.append(row_colors)
-    
-    # Jednoczesne bezpieczne formatowanie tekstu do wyświetlenia
-    row_text = [
-        str(int(row['Miejsce'])),
-        str(row['Kraj (Hellwig)']),
-        f"{row['Wynik_H_raw']:.4f}",
-        str(row['Kraj (TOPSIS)']),
-        f"{row['Wynik_T_raw']:.4f}",
-        str(row['Kraj (COPRAS)']),
-        f"{row['Wynik_C_raw']:.2f}%"
-    ]
-    cell_text.append(row_text)
-
-# Rysowanie tabeli graficznej
-fig, ax = plt.subplots(figsize=(13, 12)) # Zmniejszona szerokość figury z 16 na 13
-ax.axis('off')
-ax.axis('tight')
-
-# SZTYWNE, WĘŻSZE SZEROKOŚCI KOLUMN (Suma = 0.82 szerokości wykresu - idealne proporcje dla oka)
-col_widths = [0.05, 0.17, 0.09, 0.17, 0.09, 0.17, 0.09]
-naglowki = ['Miejsce', 'Kraj (Hellwig)', 'Wynik', 'Kraj (TOPSIS)', 'Wynik', 'Kraj (COPRAS)', 'Użyteczność']
-
-tabela_wynikowa = ax.table(
-    cellText=cell_text,
-    colLabels=naglowki,
-    cellLoc='center',
-    loc='center',
-    cellColours=cell_colours,
-    colWidths=col_widths
-)
-
-# Stylizacja ciemnozielonego nagłówka
-for j in range(len(naglowki)):
-    cell = tabela_wynikowa[0, j]
-    cell.set_facecolor('#2e7d32')
-    cell.get_text().set_color('white')
-    cell.get_text().set_weight('bold')
-    cell.get_text().set_fontsize(11)
-
-tabela_wynikowa.auto_set_font_size(False)
-tabela_wynikowa.set_fontsize(10)
-tabela_wynikowa.scale(1, 1.6) # Rozciągnięcie wierszy w pionie dla eleganckiego "oddechu"
-
-plt.title('Porównanie wyników i stabilności porządkowania liniowego państw UE', fontsize=14, pad=25, weight='bold', color='#1b5e20')
-plt.tight_layout()
-plt.show()
 
 # ==========================================
 # KROK 7: ANALIZA SKUPIEŃ (METODA WARDA)
@@ -623,3 +465,95 @@ plt.legend(fontsize=11)
 plt.tight_layout()
 plt.show()
 
+# ====================================================================
+# WIZUALIZACJA: MINIMALISTYCZNE PODIUM DLA TOP 3 KRAJÓW UE
+# ====================================================================
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+
+# Inicjalizacja płótna graficznego w proporcjach kinowych
+fig, ax = plt.subplots(figsize=(10, 6), facecolor='#ffffff')
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 5.5)
+ax.axis('off')  # Ukrycie osi i siatki dla pełnego minimalizmu
+
+# Eko-minimalistyczna paleta barw (Butelkowa zieleń, trawiasta, szałwia)
+c_1st = '#1b5e20'  # Głęboka zieleń dla lidera
+c_2nd = '#388e3c'  # Średnia zieleń
+c_3rd = '#66bb6a'  # Jasna szałwia
+c_text = '#263238'  # Elegancki, grafitowy kolor czcionki
+
+# --- MIEJSCE 2: AUSTRIA (LEWY BLOK) ---
+# Współrzędne: (X_start, Y_start), szerokość, wysokość
+rect_2nd = patches.Rectangle((1.5, 0.2), 2.0, 1.8, facecolor=c_2nd, edgecolor='none')
+ax.add_patch(rect_2nd)
+# Cyfra na podium (wycentrowana w pionie i poziomie wewnątrz bloku)
+ax.text(
+    2.5,
+    1.1,
+    '2',
+    color='white',
+    fontsize=32,
+    weight='bold',
+    ha='center',
+    va='center',
+)
+# Nazwa kraju i dopisek nad podium
+ax.text(2.5, 2.15, 'AUSTRIA', color=c_text, fontsize=13, weight='bold', ha='center')
+ax.text(2.5, 2.40, 'II Miejsce', color='gray', fontsize=9, style='italic', ha='center')
+
+# --- MIEJSCE 1: SZWECJA (ŚRODKOWY BLOK) ---
+rect_1st = patches.Rectangle((4.0, 0.2), 2.0, 2.8, facecolor=c_1st, edgecolor='none')
+ax.add_patch(rect_1st)
+ax.text(
+    5.0,
+    1.6,
+    '1',
+    color='white',
+    fontsize=44,
+    weight='bold',
+    ha='center',
+    va='center',
+)
+ax.text(5.0, 3.15, 'SZWECJA', color=c_text, fontsize=15, weight='bold', ha='center')
+ax.text(
+    5.0,
+    3.45,
+    'ABSOLUTNY LIDER',
+    color='#1b5e20',
+    fontsize=10,
+    weight='bold',
+    ha='center',
+)
+
+# --- MIEJSCE 3: DANIA (PRAWY BLOK) ---
+rect_3rd = patches.Rectangle((6.5, 0.2), 2.0, 1.1, facecolor=c_3rd, edgecolor='none')
+ax.add_patch(rect_3rd)
+ax.text(
+    7.5,
+    0.75,
+    '3',
+    color='white',
+    fontsize=24,
+    weight='bold',
+    ha='center',
+    va='center',
+)
+ax.text(7.5, 1.45, 'DANIA', color=c_text, fontsize=12, weight='bold', ha='center')
+ax.text(7.5, 1.70, 'III Miejsce', color='gray', fontsize=9, style='italic', ha='center')
+
+# --- LINIA PODSTAWY (GRUNT) ---
+ax.plot([1.0, 9.0], [0.2, 0.2], color='#b0bec5', linewidth=1.5, alpha=0.6)
+
+# Tytuł grafiki
+plt.title(
+    'Biegun Rozwoju Unii Europejskiej\nTop 3 kraje o najwyższym poziomie eko-zamożności',
+    fontsize=14,
+    pad=15,
+    weight='bold',
+    color='#1b5e20',
+    ha='center',
+)
+
+plt.tight_layout()
+plt.show()
